@@ -1,8 +1,6 @@
 package spotify;
 
 
-import lombok.SneakyThrows;
-
 import javax.swing.*;
 import java.sql.SQLException;
 

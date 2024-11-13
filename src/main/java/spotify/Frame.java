@@ -10,14 +10,15 @@ import java.sql.*;
 
 public class Frame extends JFrame implements ActionListener {
 
-    Database database = new Database();
-    Connection conn = database.getConnection();
-
-    private JPanel panelBackground;
+    // Variables para manejar el login
     private JTextField usernameField;
     private JPasswordField passwordField;
     private JButton loginButton, registerButton;
 
+    // Variable para almacenar al usuario logueado
+    public static String loggedInUsername = null;
+
+    // Constructor del Frame
     public Frame() throws SQLException {
         // Establecer el Look and Feel de FlatLaf (tema oscuro)
         try {
@@ -26,6 +27,19 @@ public class Frame extends JFrame implements ActionListener {
             e.printStackTrace();
         }
 
+        // Verificar si el usuario ya está logueado (verificar variable estática)
+        if (loggedInUsername != null) {
+            // Si está logueado, abrir la ventana principal de Spotify directamente
+            new Spotify(loggedInUsername);  // Pasar el nombre de usuario logueado
+            this.dispose();  // Cerrar la ventana de login
+        } else {
+            // Si no está logueado, mostrar el formulario de login
+            showLogin();
+        }
+    }
+
+    // Mostrar la ventana de login
+    private void showLogin() {
         // Configuración del JFrame
         this.setSize(1000, 600);
         this.setLocationRelativeTo(null);
@@ -34,7 +48,7 @@ public class Frame extends JFrame implements ActionListener {
         this.setTitle("Spotify");
 
         // Panel de fondo
-        panelBackground = new JPanel();
+        JPanel panelBackground = new JPanel();
         panelBackground.setLayout(new GridBagLayout());
         panelBackground.setBackground(Color.darkGray);
         this.add(panelBackground);
@@ -93,7 +107,7 @@ public class Frame extends JFrame implements ActionListener {
         this.setVisible(true);
     }
 
-
+    // Lógica del login y registro
     @Override
     public void actionPerformed(ActionEvent e) {
         if (e.getSource() == registerButton) {
@@ -130,28 +144,29 @@ public class Frame extends JFrame implements ActionListener {
             String username = usernameField.getText();
             String password = new String(passwordField.getPassword());
 
-            try(Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5432/Spotify", "postgres", "password");
-                PreparedStatement pstmt = conn.prepareStatement("SELECT COUNT(*) FROM userData WHERE USERNAME = ? AND PASSWORD = ?")){
+            try (Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5432/Spotify", "postgres", "password");
+                 PreparedStatement pstmt = conn.prepareStatement("SELECT COUNT(*) FROM userData WHERE USERNAME = ? AND PASSWORD = ?")) {
 
                 pstmt.setString(1, username);
                 pstmt.setString(2, password);
                 ResultSet rs = pstmt.executeQuery();
 
                 if (rs.next() && rs.getInt(1) > 0) {
-                    Spotify frameapp = new Spotify();
-                    usernameField.setText("");
-                    passwordField.setText("");
-                    this.dispose();
-                }else {
-                    JOptionPane.showMessageDialog(this, "Usuario o contraseña invalida", "Error", JOptionPane.ERROR_MESSAGE);
+                    // Login exitoso, almacenar usuario y abrir la aplicación principal
+                    loggedInUsername = username;  // Almacenar el nombre de usuario
+                    new Spotify(username);  // Abrir la aplicación de Spotify
+                    this.dispose();  // Cerrar la ventana de login
+                } else {
+                    JOptionPane.showMessageDialog(this, "Usuario o contraseña inválida", "Error", JOptionPane.ERROR_MESSAGE);
                 }
 
-            } catch (SQLException ex){
+            } catch (SQLException ex) {
                 JOptionPane.showMessageDialog(this, "", "Error", JOptionPane.ERROR_MESSAGE);
             }
-
         }
-
     }
 
+    public static void main(String[] args) throws SQLException {
+        new Frame();
+    }
 }
