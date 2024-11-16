@@ -27,11 +27,11 @@ public class Frame extends JFrame implements ActionListener {
             e.printStackTrace();
         }
 
-        // Verificar si el usuario ya está logueado (verificar variable estática)
+        // Verificar si el usuario ya está logueado
         if (loggedInUsername != null) {
             // Si está logueado, abrir la ventana principal de Spotify directamente
             new Spotify(loggedInUsername);  // Pasar el nombre de usuario logueado
-            this.dispose();  // Cerrar la ventana de login
+            this.dispose();
         } else {
             // Si no está logueado, mostrar el formulario de login
             showLogin();
@@ -152,10 +152,9 @@ public class Frame extends JFrame implements ActionListener {
                 ResultSet rs = pstmt.executeQuery();
 
                 if (rs.next() && rs.getInt(1) > 0) {
-                    // Login exitoso, almacenar usuario y abrir la aplicación principal
-                    loggedInUsername = username;  // Almacenar el nombre de usuario
-                    new Spotify(username);  // Abrir la aplicación de Spotify
-                    this.dispose();  // Cerrar la ventana de login
+                    loggedInUsername = username;
+                    new Spotify(username);
+                    this.dispose();
                 } else {
                     JOptionPane.showMessageDialog(this, "Usuario o contraseña inválida", "Error", JOptionPane.ERROR_MESSAGE);
                 }
