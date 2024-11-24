@@ -7,7 +7,12 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
-import java.sql.SQLException;
+import java.sql.*;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+
+import javazoom.jl.decoder.JavaLayerException;
+import javazoom.jl.player.Player;
 
 public class Spotify extends JFrame implements ActionListener {
 
@@ -16,7 +21,7 @@ public class Spotify extends JFrame implements ActionListener {
 //    JMenu
     private JMenuBar menuBar;
     private JMenu menuFile, menuView, menuSettings, menuHelp;
-    private JMenuItem itemNew, itemOpen, itemLogout, itemExit, itemToggleSidebar, itemChangeTheme, itemPreferences, itemAccountSettings, itemConnectDevice, itemAbout, itemSupport;
+    private JMenuItem itemOpen, itemLogout, itemExit, itemToggleSidebar, itemChangeTheme, itemPreferences, itemAccountSettings, itemConnectDevice, itemAbout, itemSupport;
 
 //    Variables to change the theme
     private boolean isDarkTheme = true;
@@ -51,6 +56,54 @@ public class Spotify extends JFrame implements ActionListener {
         this.setVisible(true);
     }
 
+    private AudioPlayer audioPlayer = new AudioPlayer();
+    private String[] songPaths = {
+            "C:\\Users\\Arianna Vega\\Desktop\\Folders\\Computacion Grafica\\src\\main\\java\\songs\\01 Juan Luis Guerra - Bachata En Fukuoka.mp3",
+            "C:\\Users\\Arianna Vega\\Desktop\\Folders\\Computacion Grafica\\src\\main\\java\\songs\\01 Bastille - Pompeii.mp3"
+    };
+    private int currentSongIndex = 0;
+
+    private void playSelectedSong(JLabel currentSongLabel) {
+        if (songPaths.length > 0) {
+            String selectedSongPath = songPaths[currentSongIndex];
+            currentSongLabel.setText("Reproduciendo: " + new File(selectedSongPath).getName());
+            audioPlayer.play(selectedSongPath);
+        } else {
+            JOptionPane.showMessageDialog(this, "No hay canciones disponibles.", "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+//    private void pauseSong() {
+//        audioPlayer.stop();
+//        JOptionPane.showMessageDialog(this, "Reproducción detenida.");
+//    }
+
+    private void nextSong(JLabel currentSongLabel) {
+        if (currentSongIndex < songPaths.length - 1) {
+            currentSongIndex++;
+            playSelectedSong(currentSongLabel);
+        } else {
+            JOptionPane.showMessageDialog(this, "No hay más canciones.", "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void previousSong(JLabel currentSongLabel) {
+        if (currentSongIndex > 0) {
+            currentSongIndex--;
+            playSelectedSong(currentSongLabel);
+        } else {
+            JOptionPane.showMessageDialog(this, "No hay canciones anteriores.", "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+
+    private Connection connectToDatabase() throws SQLException {
+        String url = "jdbc:postgresql://localhost:5432/Spotify"; // Cambia esto según tu configuración
+        String user = "postgres";
+        String password = "password";
+        return DriverManager.getConnection(url, user, password);
+    }
+
     @Override
     public void actionPerformed(ActionEvent e) {
         // Lógica para los elementos del menú
@@ -58,13 +111,6 @@ public class Spotify extends JFrame implements ActionListener {
             int confirm = JOptionPane.showConfirmDialog(this, "¿Are you sure you want to log out?", "Log out", JOptionPane.YES_NO_OPTION);
             if (confirm == JOptionPane.YES_OPTION) {
                 System.exit(0);
-            }
-        }
-
-        if (e.getSource() == itemNew) {
-            String playlistName = JOptionPane.showInputDialog(this, "Type the name of the new reproduction list: ");
-            if (playlistName != null && !playlistName.trim().isEmpty()) {
-                addPlaylist(playlistName);
             }
         }
 
@@ -154,7 +200,6 @@ public class Spotify extends JFrame implements ActionListener {
         return button;
     }
 
-
     private void initializeSidebar() {
         // Crear la barra lateral
         sidebar = new JPanel();
@@ -169,31 +214,34 @@ public class Spotify extends JFrame implements ActionListener {
         songList.setBackground(Color.LIGHT_GRAY);
         songList.setForeground(Color.BLACK);
 
-        // Agregar listas de reproducción iniciales
-        songListModel.addElement("Lista 1");
-        songListModel.addElement("Lista 2");
-        songListModel.addElement("Lista 3");
+        // Cargar listas de reproducción desde la base de datos
+        loadPlaylistsFromDatabase();
 
         // Agregar la lista a la barra lateral con un título
         JScrollPane scrollPane = new JScrollPane(songList);
         scrollPane.setBorder(BorderFactory.createTitledBorder("Listas de Reproducción"));
         sidebar.add(scrollPane, BorderLayout.CENTER);
 
-        // Crear botones de reproducción
+        // Crear controles de reproducción
         JPanel controls = new JPanel();
-        controls.setLayout(new FlowLayout());
-        playButton = createButton("▶️", e -> playSong());
-        pauseButton = createButton("⏸", e -> pauseSong());
-        nextButton = createButton("⏭️", e -> nextSong());
-        previousButton = createButton("⏮️", e -> previousSong());
+        controls.setLayout(new GridLayout(2, 1, 5, 5)); // Dos botones en una columna
+        controls.setBackground(Color.DARK_GRAY);
+
+        // Botones de añadir y eliminar playlists
+        JButton addPlaylistButton = createButton("Añadir Playlist", e -> {
+            String playlistName = JOptionPane.showInputDialog(this, "Ingresa el nombre de la nueva lista de reproducción:");
+            if (playlistName != null && !playlistName.trim().isEmpty()) {
+                addPlaylist(playlistName);
+            }
+        });
+
+        JButton deletePlaylistButton = createButton("Eliminar Playlist", e -> deleteSelectedPlaylist());
 
         // Agregar los botones al panel de controles
-        controls.add(previousButton);
-        controls.add(playButton);
-        controls.add(pauseButton);
-        controls.add(nextButton);
+        controls.add(addPlaylistButton);
+        controls.add(deletePlaylistButton);
 
-        // Agregar los controles a la barra lateral
+        // Agregar controles al panel inferior de la barra lateral
         sidebar.add(controls, BorderLayout.SOUTH);
 
         // Mostrar la barra lateral por defecto
@@ -202,6 +250,22 @@ public class Spotify extends JFrame implements ActionListener {
         // Agregar la barra lateral al JFrame
         this.add(sidebar, BorderLayout.WEST);
     }
+
+    private void loadPlaylistsFromDatabase() {
+        try (Connection conn = connectToDatabase();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT name FROM playlists")) {
+
+            while (rs.next()) {
+                songListModel.addElement(rs.getString("name"));
+            }
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(this, "Error al cargar las listas: " + e.getMessage(),
+                    "Error de Base de Datos", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+
 
     private void initializeThemeButton() {
         // Crear un panel para el botón
@@ -226,21 +290,44 @@ public class Spotify extends JFrame implements ActionListener {
 
     private void initializeMainContent() {
         // Crear el panel principal
-        mainContent = new JPanel();
-        mainContent.setLayout(new BorderLayout()); // Puedes cambiar el layout si necesitas algo diferente
+        mainContent = new JPanel(); // Verifica que mainContent no sea null
+        mainContent.setLayout(new BorderLayout());
         mainContent.setBackground(Color.GRAY);
 
-        // Añadir contenido de ejemplo
-        JLabel contentLabel = new JLabel("Espacio principal para el reproductor o listado de canciones");
-        contentLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        contentLabel.setFont(new Font("Arial", Font.BOLD, 16));
-        contentLabel.setForeground(Color.WHITE);
+        // Etiqueta para mostrar la canción actual
+        JLabel currentSongLabel = new JLabel("No hay canción seleccionada.");
+        currentSongLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        currentSongLabel.setFont(new Font("Arial", Font.BOLD, 16));
+        currentSongLabel.setForeground(Color.WHITE);
 
-        mainContent.add(contentLabel, BorderLayout.CENTER);
+        // Panel de controles de reproducción
+        JPanel playerControls = new JPanel();
+        playerControls.setLayout(new FlowLayout(FlowLayout.CENTER));
+        playerControls.setBackground(Color.DARK_GRAY);
 
-        // Agregar el panel principal al layout central
-        this.add(mainContent, BorderLayout.CENTER);
+        // Botones de reproducción
+        JButton playButton = createButton("▶️", e -> playSelectedSong(currentSongLabel));
+        JButton pauseButton = createButton("⏸", e -> audioPlayer.stop());
+        JButton nextButton = createButton("⏭️", e -> nextSong(currentSongLabel));
+        JButton previousButton = createButton("⏮️", e -> previousSong(currentSongLabel));
+
+        playerControls.add(previousButton);
+        playerControls.add(playButton);
+        playerControls.add(pauseButton);
+        playerControls.add(nextButton);
+
+        // Agregar componentes al panel principal
+        mainContent.add(currentSongLabel, BorderLayout.CENTER);
+        mainContent.add(playerControls, BorderLayout.SOUTH);
+
+        // Verifica que el panel no sea null antes de agregarlo al JFrame
+        if (mainContent != null) {
+            this.add(mainContent, BorderLayout.CENTER);
+        } else {
+            System.out.println("Error: mainContent es null");
+        }
     }
+
 
     private void initializeMenu() {
         // Crear el JMenuBar
@@ -248,9 +335,6 @@ public class Spotify extends JFrame implements ActionListener {
 
         // Crear el menú "Archivo"
         menuFile = new JMenu("Archivo");
-        itemNew = new JMenuItem("Nuevo");
-        itemNew.addActionListener(this);
-        menuFile.add(itemNew);
 
         itemOpen = new JMenuItem("Abrir");
         itemOpen.addActionListener(this);
@@ -325,10 +409,42 @@ public class Spotify extends JFrame implements ActionListener {
 
     private void addPlaylist(String playlistName) {
         if (!playlistName.trim().isEmpty()) {
-            songListModel.addElement(playlistName); // Añadir la lista al modelo
-            JOptionPane.showMessageDialog(this, "Lista de reproducción '" + playlistName + "' añadida.");
+            try (Connection conn = connectToDatabase()) {
+                String query = "INSERT INTO playlists (name) VALUES (?)";
+                PreparedStatement pstmt = conn.prepareStatement(query);
+                pstmt.setString(1, playlistName);
+                pstmt.executeUpdate();
+
+                // Añadir al modelo de la lista
+                songListModel.addElement(playlistName);
+
+                JOptionPane.showMessageDialog(this, "Lista de reproducción '" + playlistName + "' añadida.");
+            } catch (SQLException e) {
+                JOptionPane.showMessageDialog(this, "Error al guardar en la base de datos: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
         } else {
             JOptionPane.showMessageDialog(this, "El nombre de la lista no puede estar vacío.", "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void deleteSelectedPlaylist() {
+        String selectedPlaylist = songList.getSelectedValue();
+        if (selectedPlaylist != null) {
+            try (Connection conn = connectToDatabase()) {
+                String query = "DELETE FROM playlists WHERE name = ?";
+                PreparedStatement pstmt = conn.prepareStatement(query);
+                pstmt.setString(1, selectedPlaylist);
+                pstmt.executeUpdate();
+
+                // Eliminar del modelo
+                songListModel.removeElement(selectedPlaylist);
+
+                JOptionPane.showMessageDialog(this, "Lista de reproducción '" + selectedPlaylist + "' eliminada.");
+            } catch (SQLException e) {
+                JOptionPane.showMessageDialog(this, "Error al eliminar en la base de datos: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        } else {
+            JOptionPane.showMessageDialog(this, "Selecciona una lista para eliminar.", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
