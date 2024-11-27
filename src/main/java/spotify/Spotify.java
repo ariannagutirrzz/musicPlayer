@@ -792,8 +792,6 @@ public class Spotify extends JFrame implements ActionListener {
                                             insertUserSongStmt.setString(3, fileName);
 
                                             insertUserSongStmt.executeUpdate();
-                                            songList.revalidate();
-                                            songList.repaint();
                                             System.out.println("Canción insertada y añadida a la lista del usuario.");
                                         }
                                     }
@@ -862,13 +860,13 @@ public class Spotify extends JFrame implements ActionListener {
                 deleteSongStmt.executeUpdate();
             }
 
-            // Eliminar el archivo físico de la canción **NO** es necesario
-            // Así que hemos comentado esta sección para evitar que se elimine el archivo del sistema de archivos.
-
             // Si todo salió bien, confirmar la transacción
             conn.commit();
-            songList.revalidate();
-            songList.repaint();
+
+            // Actualizar la lista de canciones después de la eliminación
+            updateSongList(user_id); // Asumo que tienes un user_id para este caso
+
+            // Mostrar mensaje de éxito
             JOptionPane.showMessageDialog(null, "Canción eliminada correctamente.",
                     "Eliminación Exitosa", JOptionPane.INFORMATION_MESSAGE);
 
@@ -888,6 +886,26 @@ public class Spotify extends JFrame implements ActionListener {
             JOptionPane.showMessageDialog(null, "Error al eliminar la canción: " + e.getMessage(),
                     "Error", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    private void updateSongList(int userId) {
+        // Obtener las canciones de la base de datos para este usuario
+        String[] songPathsList = getSongPathsFromDB(userId);  // Método que obtiene la lista de canciones de la base de datos
+
+        // Crear un nuevo modelo para la lista
+        DefaultListModel<String> songListModel = new DefaultListModel<>();
+
+        // Añadir las canciones al modelo (actualizar con las nuevas canciones)
+        for (String songPath : songPathsList) {
+            songListModel.addElement(new File(songPath).getName());  // Agregar el nombre del archivo de cada canción
+        }
+
+        // Actualizar el modelo del JList con el nuevo modelo
+        songList.setModel(songListModel);
+
+        // Si es necesario, hacer que el JList se actualice y redibuje
+        songList.revalidate();
+        songList.repaint();
     }
 
 
