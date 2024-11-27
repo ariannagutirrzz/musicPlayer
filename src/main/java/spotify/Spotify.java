@@ -17,7 +17,8 @@ import java.util.Hashtable;
 public class Spotify extends JFrame implements ActionListener {
 
     JLabel label;
-    private int index;
+    private int id;
+    private final String CURRENTUSER = Frame.username;
 
     //    Timer
     private Timer songTimer;
@@ -40,7 +41,7 @@ public class Spotify extends JFrame implements ActionListener {
     private JPanel sidebar;
     private JList<String> songList, playListList;
     private DefaultListModel<String> songListModel;
-    private JButton playButton, pauseButton, nextButton, previousButton;
+    private JButton playButton, pauseButton, nextButton, previousButton, addSongButton;
 
     //    Main Content
     private JPanel mainContent;
@@ -183,6 +184,8 @@ public class Spotify extends JFrame implements ActionListener {
         return songPathsList.toArray(new String[0]);
     }
 
+
+
     @Override
     public void actionPerformed(ActionEvent e) {
         // Lógica para los elementos del menú
@@ -226,7 +229,6 @@ public class Spotify extends JFrame implements ActionListener {
             songList.repaint();
         }
 
-
         if (e.getSource() == itemToggleSidebar) {
             // Mostrar u ocultar la barra lateral
             sidebar.setVisible(!sidebar.isVisible());
@@ -245,6 +247,7 @@ public class Spotify extends JFrame implements ActionListener {
         if (e.getSource() == itemAbout) {
             JOptionPane.showMessageDialog(this, "Acerca de Spotify. Versión 1.0");
         }
+
     }
 
 
@@ -290,10 +293,12 @@ public class Spotify extends JFrame implements ActionListener {
         });
 
         JButton deletePlaylistButton = createButton("Eliminar Playlist", e -> deleteSelectedPlaylist());
+        JButton addSongButton = createButton("Añadir Canción", e -> openFileChooser());
 
         // Agregar los botones al panel de controles
         controls.add(addPlaylistButton);
         controls.add(deletePlaylistButton);
+        controls.add(addSongButton);
 
         // Agregar controles al panel inferior de la barra lateral
         sidebar.add(controls, BorderLayout.SOUTH);
@@ -305,10 +310,38 @@ public class Spotify extends JFrame implements ActionListener {
         this.add(sidebar, BorderLayout.WEST);
     }
 
+    private int getCurrentSesion() {
+
+        String query = "SELECT id FROM userdata WHERE username = ?";
+        try (Connection conn = connectToDatabase();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            // Establecer el valor del parámetro en la consulta
+            stmt.setString(1, CURRENTUSER);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("id");
+                } else {
+                    JOptionPane.showMessageDialog(this, "No se encontró el usuario en la base de datos.",
+                            "Error", JOptionPane.WARNING_MESSAGE);
+                }
+            }
+
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(this, "Error al cargar el id " + e.getMessage(),
+                    "Error de Base de Datos", JOptionPane.ERROR_MESSAGE);
+        }
+        return 0; // Valor por defecto si no se encuentra ningún id
+    }
+
+
     private void loadPlaylistsFromDatabase() {
+
+        int current_id = getCurrentSesion();
         try (Connection conn = connectToDatabase();
              Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT name FROM playlists")) {
+             ResultSet rs = stmt.executeQuery("SELECT name FROM playlists WHERE id = " + current_id)) {
 
             while (rs.next()) {
                 playListListModel.addElement(rs.getString("name"));
@@ -557,9 +590,10 @@ public class Spotify extends JFrame implements ActionListener {
     private void addPlaylist(String playlistName) {
         if (!playlistName.trim().isEmpty()) {
             try (Connection conn = connectToDatabase()) {
-                String query = "INSERT INTO playlists (name) VALUES (?)";
+                String query = "INSERT INTO playlists (name, user_id) VALUES (?, ?)";
                 PreparedStatement pstmt = conn.prepareStatement(query);
                 pstmt.setString(1, playlistName);
+                pstmt.setInt(2, id);
                 pstmt.executeUpdate();
 
                 // Añadir al modelo de la lista
@@ -618,7 +652,6 @@ public class Spotify extends JFrame implements ActionListener {
         }
     }
 
-
     private void pauseSong() {
         if (songTimer != null && songTimer.isRunning()) {
             songTimer.stop();
@@ -638,6 +671,51 @@ public class Spotify extends JFrame implements ActionListener {
         int minutes = elapsedTime / 60;
         int seconds = elapsedTime % 60;
         timeLabel.setText(String.format("Tiempo transcurrido: %02d:%02d", minutes, seconds));
+    }
+
+    private void openFileChooser() {
+        // Crear un JFileChooser para elegir un archivo
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setCurrentDirectory(new File(System.getProperty("user.home"))); // Directorio inicial
+
+        // Filtro para solo mostrar archivos de audio (opcional)
+        fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivos de audio", "mp3", "wav", "flac"));
+
+        // Mostrar el cuadro de diálogo
+        int result = fileChooser.showOpenDialog(this);
+
+        // Si el usuario seleccionó un archivo
+        if (result == JFileChooser.APPROVE_OPTION) {
+            File selectedFile = fileChooser.getSelectedFile();
+            String filePath = selectedFile.getAbsolutePath();
+            String fileName = selectedFile.getName();
+
+            // URL de conexión para PostgreSQL
+            String url = "jdbc:postgresql://localhost:5432/Spotify";  // Cambia 'localhost' y 'Spotify' por tus datos
+            String user = "postgres";  // Cambia con tu usuario de PostgreSQL
+            String password = "password";  // Cambia con tu contraseña de PostgreSQL
+
+            String query = "INSERT INTO songs (name, path) VALUES (?, ?)";
+
+            try (Connection conn = DriverManager.getConnection(url, user, password);
+                 PreparedStatement stmt = conn.prepareStatement(query)) {
+
+                // Establecer los valores de los parámetros en la consulta
+                stmt.setString(2, filePath);   // Para el nombre de la canción
+                stmt.setString(1, fileName);   // Para la ruta de la canción
+
+                // Ejecutar la consulta de inserción
+                stmt.executeUpdate();
+
+                System.out.println("Canción insertada correctamente.");
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            // Aquí podrías también agregar el path a tu base de datos o lista interna
+            System.out.println("Canción añadida: " + fileName + " con ruta: " + filePath);
+        }
     }
 
     public static void main(String[] args) {

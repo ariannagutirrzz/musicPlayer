@@ -11,6 +11,7 @@ import java.sql.*;
 public class Frame extends JFrame implements ActionListener {
 
     // Variables para manejar el login
+    public static String username;
     private JTextField usernameField;
     private JPasswordField passwordField;
     private JButton loginButton, registerButton;
@@ -111,7 +112,7 @@ public class Frame extends JFrame implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
         if (e.getSource() == registerButton) {
-            String username = usernameField.getText();
+            username = usernameField.getText();
             String password = new String(passwordField.getPassword());
 
             // Intentar la conexión y la consulta en un bloque try-catch
@@ -141,7 +142,7 @@ public class Frame extends JFrame implements ActionListener {
         }
 
         if (e.getSource() == loginButton) {
-            String username = usernameField.getText();
+            username = usernameField.getText();
             String password = new String(passwordField.getPassword());
 
             try (Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5432/Spotify", "postgres", "password");
