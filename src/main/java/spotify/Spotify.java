@@ -8,6 +8,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileInputStream;
 import java.sql.*;
@@ -225,21 +226,23 @@ public class Spotify extends JFrame implements ActionListener {
             this.dispose();
         }
 
+        // Cuando se actualiza el tema o se agrega una canción a la base de datos:
         if (e.getSource() == themeToggleButton) {
-            // Alternar tema
-            try {
-                if (isDarkTheme) {
-                    UIManager.setLookAndFeel("javax.swing.plaf.metal.MetalLookAndFeel"); // Tema claro
-                    isDarkTheme = false;
-                } else {
-                    UIManager.setLookAndFeel(new FlatDarkLaf()); // Tema oscuro
-                    isDarkTheme = true;
-                }
-                SwingUtilities.updateComponentTreeUI(this); // Aplicar cambio de tema
-                updateThemeIcon();
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Error al cambiar tema.", "Error", JOptionPane.ERROR_MESSAGE);
+            // Recargar las canciones desde la base de datos
+            songPathsList = getSongPathsFromDB();  // Método que obtiene la lista de canciones de la base de datos
+            songListModel = new DefaultListModel<>();  // Crear un nuevo DefaultListModel
+
+            // Añadir las canciones al modelo (actualizar con las nuevas canciones)
+            for (String songPath : songPathsList) {
+                songListModel.addElement(new File(songPath).getName());  // Agregar el nombre del archivo de cada canción
             }
+
+            // Actualizar el modelo del JList con el nuevo modelo
+            songList.setModel(songListModel);
+
+            // Si es necesario, hacer que el JList se actualice y redibuje
+            songList.revalidate();
+            songList.repaint();
         }
 
 
@@ -351,13 +354,19 @@ public class Spotify extends JFrame implements ActionListener {
         JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         topPanel.setBackground(Color.DARK_GRAY);
 
-        // Configurar el botón de cambiar tema
+        // Cargar la imagen original
+        ImageIcon originalIcon = new ImageIcon("C:\\Users\\anton\\OneDrive\\Escritorio\\dev\\javaprojetcs\\musicPlayer\\musicPlayer\\src\\main\\java\\images\\refresh.png");
+
+        // Redimensionar y crear una imagen redonda a partir de la imagen original
+        ImageIcon roundedIcon = createRoundedIcon(originalIcon, 35, 35); // Tamaño deseado 40x40
+
+        // Configurar el botón de cambiar tema con la imagen redonda
         themeToggleButton = new JButton();
+        themeToggleButton.setIcon(roundedIcon);
         themeToggleButton.setPreferredSize(new Dimension(40, 40));
         themeToggleButton.setFocusPainted(false);
         themeToggleButton.setBorder(BorderFactory.createEmptyBorder());
         themeToggleButton.setBackground(Color.DARK_GRAY);
-        updateThemeIcon();
         themeToggleButton.addActionListener(this);
 
         // Agregar el botón al panel
@@ -366,6 +375,41 @@ public class Spotify extends JFrame implements ActionListener {
         // Agregar el panel al marco
         this.add(topPanel, BorderLayout.NORTH);
     }
+
+    private ImageIcon createRoundedIcon(ImageIcon originalIcon, int targetWidth, int targetHeight) {
+        // Redimensionar la imagen original para que se ajuste al tamaño del botón (por ejemplo, 40x40)
+        Image scaledImage = originalIcon.getImage().getScaledInstance(targetWidth, targetHeight, Image.SCALE_SMOOTH);
+        originalIcon = new ImageIcon(scaledImage);
+
+        // Obtener el tamaño de la imagen redimensionada
+        int width = originalIcon.getIconWidth();
+        int height = originalIcon.getIconHeight();
+
+        // Crear una imagen de tipo BufferedImage con transparencia (ARGB)
+        BufferedImage bufferedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+
+        // Crear un objeto Graphics2D para dibujar sobre la imagen
+        Graphics2D g2d = bufferedImage.createGraphics();
+
+        // Establecer el antialiasing para un borde suave
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        // Crear un círculo dentro del área de la imagen
+        g2d.fillRoundRect(0, 0, width, height, width, height);  // Esto crea un círculo
+
+        // Establecer la máscara para recortar la imagen en forma circular
+        g2d.setComposite(AlphaComposite.SrcIn);
+
+        // Dibujar la imagen redimensionada sobre la imagen circular
+        g2d.drawImage(originalIcon.getImage(), 0, 0, null);
+
+        // Liberar los recursos gráficos
+        g2d.dispose();
+
+        // Devolver la nueva imagen redonda como ImageIcon
+        return new ImageIcon(bufferedImage);
+    }
+
     private int getTotalSecondsFromDuration(String duration) {
         try {
             String[] parts = duration.split(":");
