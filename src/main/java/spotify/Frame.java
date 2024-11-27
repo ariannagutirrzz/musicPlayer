@@ -144,7 +144,7 @@ public class Frame extends JFrame implements ActionListener {
                     JOptionPane.showMessageDialog(this, "Error al registrar usuario: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                 }
             }
-                
+
         }
 
         if (e.getSource() == loginButton) {

@@ -17,7 +17,6 @@ import java.util.Hashtable;
 public class Spotify extends JFrame implements ActionListener {
 
     JLabel label;
-    private int id;
     private final String CURRENTUSER = Frame.username;
 
     //    Timer
@@ -67,7 +66,8 @@ public class Spotify extends JFrame implements ActionListener {
         this.setVisible(true);
     }
 
-    private String[] songPathsList = getSongPathsFromDB();
+    int user_id = getCurrentSesion();
+    private String[] songPathsList = getSongPathsFromDB(user_id);
 
     // Índices separados para playlist y canciones
     private int songIndex = -1;       // Índice para la canción seleccionada
@@ -162,27 +162,44 @@ public class Spotify extends JFrame implements ActionListener {
         return DriverManager.getConnection(url, user, password);
     }
 
-    public static String[] getSongPathsFromDB() {
+
+    public static String[] getSongPathsFromDB(int usuarioId) {
         ArrayList<String> songPathsList = new ArrayList<>();
         String url = "jdbc:postgresql://localhost:5432/Spotify"; // Cambia esto según tu configuración
         String user = "postgres";
         String password = "password";
 
-        try (Connection connection = DriverManager.getConnection(url, user, password)) {
-            Statement stmt = connection.createStatement();
-            String sql = "SELECT path FROM songs";  // Consulta SQL para obtener las rutas de las canciones
-            ResultSet rs = stmt.executeQuery(sql);
+        // Verificamos que el ID del usuario sea válido
+        if (usuarioId <= 0) {
+            System.out.println("ID de usuario inválido.");
+            return new String[0];  // Retorna un arreglo vacío si el ID del usuario no es válido
+        }
 
-            while (rs.next()) {
-                songPathsList.add(rs.getString("path"));
+        String sql = "SELECT s.path FROM songs s " +
+                "JOIN user_songs us ON s.id = us.song_id " +
+                "WHERE us.user_id = ?";  // Filtro por usuario
+
+        try (Connection connection = DriverManager.getConnection(url, user, password);
+             PreparedStatement stmt = connection.prepareStatement(sql)) {
+
+            // Establecemos el parámetro de la consulta (el ID del usuario)
+            stmt.setInt(1, usuarioId);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                // Recogemos las rutas de las canciones asociadas al usuario
+                while (rs.next()) {
+                    songPathsList.add(rs.getString("path"));
+                }
             }
+
         } catch (SQLException e) {
             e.printStackTrace();
         }
 
-        // Convertimos la lista de rutas a un arreglo de String
+        // Convertimos la lista de rutas a un arreglo de String y lo retornamos
         return songPathsList.toArray(new String[0]);
     }
+
 
 
 
@@ -213,7 +230,7 @@ public class Spotify extends JFrame implements ActionListener {
         // Cuando se actualiza el tema o se agrega una canción a la base de datos:
         if (e.getSource() == themeToggleButton) {
             // Recargar las canciones desde la base de datos
-            songPathsList = getSongPathsFromDB();  // Método que obtiene la lista de canciones de la base de datos
+            songPathsList = getSongPathsFromDB(user_id);  // Método que obtiene la lista de canciones de la base de datos
             songListModel = new DefaultListModel<>();  // Crear un nuevo DefaultListModel
 
             // Añadir las canciones al modelo (actualizar con las nuevas canciones)
@@ -337,20 +354,31 @@ public class Spotify extends JFrame implements ActionListener {
 
 
     private void loadPlaylistsFromDatabase() {
+        int current_id = getCurrentSesion(); // Asegúrate de que este método obtiene correctamente el ID del usuario
+        System.out.println("Current user ID: " + current_id);
 
-        int current_id = getCurrentSesion();
         try (Connection conn = connectToDatabase();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT name FROM playlists WHERE id = " + current_id)) {
+             // Usamos un PreparedStatement para evitar problemas de seguridad
+             PreparedStatement stmt = conn.prepareStatement("SELECT name FROM playlists WHERE user_id = ?")) {
 
-            while (rs.next()) {
-                playListListModel.addElement(rs.getString("name"));
+            // Establecemos el valor de `user_id` en la consulta preparada
+            stmt.setInt(1, current_id);
+
+            // Ejecutamos la consulta
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    // Agregamos el nombre de la lista de reproducción al modelo
+                    playListListModel.addElement(rs.getString("name"));
+                }
             }
+
         } catch (SQLException e) {
+            // Capturamos cualquier excepción y mostramos un mensaje de error
             JOptionPane.showMessageDialog(this, "Error al cargar las listas: " + e.getMessage(),
                     "Error de Base de Datos", JOptionPane.ERROR_MESSAGE);
         }
     }
+
 
     private void initializeThemeButton() {
         // Crear un panel para el botón
@@ -588,12 +616,13 @@ public class Spotify extends JFrame implements ActionListener {
     }
 
     private void addPlaylist(String playlistName) {
+        int current_id = getCurrentSesion();
         if (!playlistName.trim().isEmpty()) {
             try (Connection conn = connectToDatabase()) {
                 String query = "INSERT INTO playlists (name, user_id) VALUES (?, ?)";
                 PreparedStatement pstmt = conn.prepareStatement(query);
                 pstmt.setString(1, playlistName);
-                pstmt.setInt(2, id);
+                pstmt.setInt(2, current_id);
                 pstmt.executeUpdate();
 
                 // Añadir al modelo de la lista
@@ -674,6 +703,14 @@ public class Spotify extends JFrame implements ActionListener {
     }
 
     private void openFileChooser() {
+
+        int current_id = getCurrentSesion();  // Obtener el ID del usuario actual
+        if (current_id == -1) {
+            // Si no hay un usuario válido, salir de la función
+            JOptionPane.showMessageDialog(this, "No hay usuario conectado.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
         // Crear un JFileChooser para elegir un archivo
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setCurrentDirectory(new File(System.getProperty("user.home"))); // Directorio inicial
@@ -695,28 +732,75 @@ public class Spotify extends JFrame implements ActionListener {
             String user = "postgres";  // Cambia con tu usuario de PostgreSQL
             String password = "password";  // Cambia con tu contraseña de PostgreSQL
 
-            String query = "INSERT INTO songs (name, path) VALUES (?, ?)";
+            // Primero, debemos verificar si la canción ya existe en la tabla "songs"
+            String checkSongQuery = "SELECT id FROM songs WHERE name = ? AND path = ?";
 
-            try (Connection conn = DriverManager.getConnection(url, user, password);
-                 PreparedStatement stmt = conn.prepareStatement(query)) {
+            try (Connection conn = DriverManager.getConnection(url, user, password)) {
+                // Verificar si la canción ya existe en la tabla "songs"
+                try (PreparedStatement checkStmt = conn.prepareStatement(checkSongQuery)) {
+                    checkStmt.setString(1, fileName);
+                    checkStmt.setString(2, filePath);
 
-                // Establecer los valores de los parámetros en la consulta
-                stmt.setString(2, filePath);   // Para el nombre de la canción
-                stmt.setString(1, fileName);   // Para la ruta de la canción
+                    try (ResultSet rs = checkStmt.executeQuery()) {
+                        if (rs.next()) {
+                            // La canción ya existe, obtenemos su id
+                            int songId = rs.getInt("id");
 
-                // Ejecutar la consulta de inserción
-                stmt.executeUpdate();
+                            // Insertamos la relación en la tabla user_songs
+                            String insertUserSongQuery = "INSERT INTO user_songs (user_id, song_id) VALUES (?, ?)";
 
-                System.out.println("Canción insertada correctamente.");
+                            try (PreparedStatement insertStmt = conn.prepareStatement(insertUserSongQuery)) {
+                                insertStmt.setInt(1, current_id);  // Establecemos el ID del usuario
+                                insertStmt.setInt(2, songId);     // Establecemos el ID de la canción
 
-            } catch (Exception e) {
+                                // Ejecutamos la inserción de la relación
+                                insertStmt.executeUpdate();
+                                System.out.println("Canción añadida a la lista del usuario.");
+                            }
+
+                        } else {
+                            // La canción no existe en la base de datos, debemos insertarla
+                            String insertSongQuery = "INSERT INTO songs (name, path) VALUES (?, ?)";
+
+                            try (PreparedStatement insertSongStmt = conn.prepareStatement(insertSongQuery, Statement.RETURN_GENERATED_KEYS)) {
+                                insertSongStmt.setString(1, fileName);
+                                insertSongStmt.setString(2, filePath);
+
+                                // Ejecutamos la inserción de la canción
+                                insertSongStmt.executeUpdate();
+
+                                // Obtener el ID de la canción recién insertada
+                                try (ResultSet generatedKeys = insertSongStmt.getGeneratedKeys()) {
+                                    if (generatedKeys.next()) {
+                                        int newSongId = generatedKeys.getInt(1);
+
+                                        // Insertamos la relación en user_songs
+                                        String insertUserSongQuery = "INSERT INTO user_songs (user_id, song_id) VALUES (?, ?)";
+                                        try (PreparedStatement insertUserSongStmt = conn.prepareStatement(insertUserSongQuery)) {
+                                            insertUserSongStmt.setInt(1, current_id);  // ID del usuario
+                                            insertUserSongStmt.setInt(2, newSongId);  // ID de la nueva canción
+
+                                            insertUserSongStmt.executeUpdate();
+                                            System.out.println("Canción insertada y añadida a la lista del usuario.");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+            } catch (SQLException e) {
                 e.printStackTrace();
+                JOptionPane.showMessageDialog(this, "Error al agregar la canción: " + e.getMessage(),
+                        "Error de Base de Datos", JOptionPane.ERROR_MESSAGE);
             }
 
             // Aquí podrías también agregar el path a tu base de datos o lista interna
-            System.out.println("Canción añadida: " + fileName + " con ruta: " + filePath);
+            System.out.println("Canción seleccionada: " + fileName + " con ruta: " + filePath);
         }
     }
+
 
     public static void main(String[] args) {
         // Llamada para inicializar la ventana de Spotify
