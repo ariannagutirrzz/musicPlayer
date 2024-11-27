@@ -4,6 +4,7 @@ import javazoom.jl.decoder.Bitstream;
 import javazoom.jl.decoder.Header;
 
 import javax.swing.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -311,11 +312,13 @@ public class Spotify extends JFrame implements ActionListener {
 
         JButton deletePlaylistButton = createButton("Eliminar Playlist", e -> deleteSelectedPlaylist());
         JButton addSongButton = createButton("Añadir Canción", e -> openFileChooser());
+        JButton deleteSongButton = createButton("Eliminar Canción", e -> deleteSong());
 
         // Agregar los botones al panel de controles
         controls.add(addPlaylistButton);
         controls.add(deletePlaylistButton);
         controls.add(addSongButton);
+        controls.add(deleteSongButton);
 
         // Agregar controles al panel inferior de la barra lateral
         sidebar.add(controls, BorderLayout.SOUTH);
@@ -753,11 +756,12 @@ public class Spotify extends JFrame implements ActionListener {
                             int songId = rs.getInt("id");
 
                             // Insertamos la relación en la tabla user_songs
-                            String insertUserSongQuery = "INSERT INTO user_songs (user_id, song_id) VALUES (?, ?)";
+                            String insertUserSongQuery = "INSERT INTO user_songs (user_id, song_id, name) VALUES (?, ?, ?)";
 
                             try (PreparedStatement insertStmt = conn.prepareStatement(insertUserSongQuery)) {
                                 insertStmt.setInt(1, current_id);  // Establecemos el ID del usuario
                                 insertStmt.setInt(2, songId);     // Establecemos el ID de la canción
+                                insertStmt.setString(3, fileName);
 
                                 // Ejecutamos la inserción de la relación
                                 insertStmt.executeUpdate();
@@ -781,12 +785,15 @@ public class Spotify extends JFrame implements ActionListener {
                                         int newSongId = generatedKeys.getInt(1);
 
                                         // Insertamos la relación en user_songs
-                                        String insertUserSongQuery = "INSERT INTO user_songs (user_id, song_id) VALUES (?, ?)";
+                                        String insertUserSongQuery = "INSERT INTO user_songs (user_id, song_id, name) VALUES (?, ?, ?)";
                                         try (PreparedStatement insertUserSongStmt = conn.prepareStatement(insertUserSongQuery)) {
                                             insertUserSongStmt.setInt(1, current_id);  // ID del usuario
                                             insertUserSongStmt.setInt(2, newSongId);  // ID de la nueva canción
+                                            insertUserSongStmt.setString(3, fileName);
 
                                             insertUserSongStmt.executeUpdate();
+                                            songList.revalidate();
+                                            songList.repaint();
                                             System.out.println("Canción insertada y añadida a la lista del usuario.");
                                         }
                                     }
@@ -807,6 +814,81 @@ public class Spotify extends JFrame implements ActionListener {
         }
     }
 
+    private void deleteSong() {
+        // Primero, obtener la ruta del archivo de la canción antes de eliminarla de la base de datos
+        String filePath = null;
+        String selectedSong = songList.getSelectedValue();
+
+        // URL de conexión para PostgreSQL
+        String url = "jdbc:postgresql://localhost:5432/Spotify";  // Cambia esto según tu configuración
+        String user = "postgres";  // Cambia con tu usuario de PostgreSQL
+        String password = "password";  // Cambia con tu contraseña de PostgreSQL
+
+        // Consulta para obtener el ID de la canción y la ruta del archivo
+        String getSongInfoQuery = "SELECT id, path FROM songs WHERE name = ?";
+
+        // Inicia una conexión a la base de datos
+        try (Connection conn = DriverManager.getConnection(url, user, password)) {
+            // Iniciar una transacción para asegurar la integridad de las operaciones
+            conn.setAutoCommit(false);
+
+            // Primero, obtenemos el ID y la ruta del archivo de la canción
+            int songId = -1;
+            try (PreparedStatement getSongStmt = conn.prepareStatement(getSongInfoQuery)) {
+                getSongStmt.setString(1, selectedSong);
+                try (ResultSet rs = getSongStmt.executeQuery()) {
+                    if (rs.next()) {
+                        songId = rs.getInt("id");
+                        filePath = rs.getString("path");
+                    } else {
+                        JOptionPane.showMessageDialog(null, "No se encontró la canción con nombre: " + selectedSong,
+                                "Error", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    }
+                }
+            }
+
+            // Si se encontró la ruta del archivo, eliminamos la relación con los usuarios
+            String deleteUserSongQuery = "DELETE FROM user_songs WHERE song_id = ?";
+            try (PreparedStatement deleteUserSongStmt = conn.prepareStatement(deleteUserSongQuery)) {
+                deleteUserSongStmt.setInt(1, songId);  // Usamos song_id para eliminar la relación
+                deleteUserSongStmt.executeUpdate();
+            }
+
+            // Ahora, eliminamos la canción de la tabla songs
+            String deleteSongQuery = "DELETE FROM songs WHERE id = ?";
+            try (PreparedStatement deleteSongStmt = conn.prepareStatement(deleteSongQuery)) {
+                deleteSongStmt.setInt(1, songId);  // Usamos el songId para eliminar la canción
+                deleteSongStmt.executeUpdate();
+            }
+
+            // Eliminar el archivo físico de la canción **NO** es necesario
+            // Así que hemos comentado esta sección para evitar que se elimine el archivo del sistema de archivos.
+
+            // Si todo salió bien, confirmar la transacción
+            conn.commit();
+            songList.revalidate();
+            songList.repaint();
+            JOptionPane.showMessageDialog(null, "Canción eliminada correctamente.",
+                    "Eliminación Exitosa", JOptionPane.INFORMATION_MESSAGE);
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+            try {
+                // Si ocurre un error, revertir la transacción
+                Connection conn = DriverManager.getConnection(url, user, password);
+                conn.rollback();
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+            JOptionPane.showMessageDialog(null, "Error al eliminar la canción: " + e.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+        } catch (Exception e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Error al eliminar la canción: " + e.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
 
 
     public static void main(String[] args) {
