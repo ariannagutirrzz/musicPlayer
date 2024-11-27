@@ -8,32 +8,32 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
 import java.sql.*;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-
-import javazoom.jl.decoder.JavaLayerException;
-import javazoom.jl.player.Player;
+import java.util.ArrayList;
 
 public class Spotify extends JFrame implements ActionListener {
 
     JLabel label;
+    private int index;
 
-//    JMenu
+    // Para el control de volumen
+    private AudioPlayer audioPlayer = new AudioPlayer();
+
+    //    JMenu
     private JMenuBar menuBar;
     private JMenu menuFile, menuView, menuSettings, menuHelp;
     private JMenuItem itemOpen, itemLogout, itemExit, itemToggleSidebar, itemChangeTheme, itemPreferences, itemAccountSettings, itemConnectDevice, itemAbout, itemSupport;
 
-//    Variables to change the theme
+    //    Variables to change the theme
     private boolean isDarkTheme = true;
     private JButton themeToggleButton;
 
-//    Lateral bar
+    //    Lateral bar
     private JPanel sidebar;
     private JList<String> songList;
     private DefaultListModel<String> songListModel;
     private JButton playButton, pauseButton, nextButton, previousButton;
 
-//    Main Content
+    //    Main Content
     private JPanel mainContent;
 
     public Spotify(String loggedInUsername) {
@@ -53,34 +53,31 @@ public class Spotify extends JFrame implements ActionListener {
         initializeThemeButton();
         initializeSidebar();
         initializeMenu();
+        this.setLocationRelativeTo(null);
         this.setVisible(true);
     }
 
-    private AudioPlayer audioPlayer = new AudioPlayer();
-    private String[] songPaths = {
-            "C:\\Users\\Arianna Vega\\Desktop\\Folders\\Computacion Grafica\\src\\main\\java\\songs\\01 Juan Luis Guerra - Bachata En Fukuoka.mp3",
-            "C:\\Users\\Arianna Vega\\Desktop\\Folders\\Computacion Grafica\\src\\main\\java\\songs\\01 Bastille - Pompeii.mp3"
-    };
-    private int currentSongIndex = 0;
+    private String[] songPathsList = getSongPathsFromDB();
+
+    // Índices separados para playlist y canciones
+    private int songIndex = -1;       // Índice para la canción seleccionada
 
     private void playSelectedSong(JLabel currentSongLabel) {
-        if (songPaths.length > 0) {
-            String selectedSongPath = songPaths[currentSongIndex];
+        if (songIndex >= 0 && songIndex < songPathsList.length) {
+            String selectedSongPath = songPathsList[songIndex];  // Usar el índice correcto de la canción
             currentSongLabel.setText("Reproduciendo: " + new File(selectedSongPath).getName());
-            audioPlayer.play(selectedSongPath);
+            System.out.println("Reproduciendo: " + selectedSongPath);  // Depuración
+            audioPlayer.play(selectedSongPath);  // Método para reproducir la canción
         } else {
-            JOptionPane.showMessageDialog(this, "No hay canciones disponibles.", "Error", JOptionPane.ERROR_MESSAGE);
+            System.out.println("Por favor, selecciona una canción.");
+            currentSongLabel.setText("Por favor, selecciona una canción.");
         }
     }
 
-//    private void pauseSong() {
-//        audioPlayer.stop();
-//        JOptionPane.showMessageDialog(this, "Reproducción detenida.");
-//    }
-
     private void nextSong(JLabel currentSongLabel) {
-        if (currentSongIndex < songPaths.length - 1) {
-            currentSongIndex++;
+        // Verificar si no estamos en la última canción
+        if (songIndex < songPathsList.length - 1) {
+            songIndex++;  // Avanzar a la siguiente canción
             playSelectedSong(currentSongLabel);
         } else {
             JOptionPane.showMessageDialog(this, "No hay más canciones.", "Error", JOptionPane.ERROR_MESSAGE);
@@ -88,8 +85,9 @@ public class Spotify extends JFrame implements ActionListener {
     }
 
     private void previousSong(JLabel currentSongLabel) {
-        if (currentSongIndex > 0) {
-            currentSongIndex--;
+        // Verificar si no estamos en la primera canción
+        if (songIndex > 0) {
+            songIndex--;  // Retroceder a la canción anterior
             playSelectedSong(currentSongLabel);
         } else {
             JOptionPane.showMessageDialog(this, "No hay canciones anteriores.", "Error", JOptionPane.ERROR_MESSAGE);
@@ -102,6 +100,28 @@ public class Spotify extends JFrame implements ActionListener {
         String user = "postgres";
         String password = "password";
         return DriverManager.getConnection(url, user, password);
+    }
+
+    public static String[] getSongPathsFromDB() {
+        ArrayList<String> songPathsList = new ArrayList<>();
+        String url = "jdbc:postgresql://localhost:5432/Spotify"; // Cambia esto según tu configuración
+        String user = "postgres";
+        String password = "password";
+
+        try (Connection connection = DriverManager.getConnection(url, user, password)) {
+            Statement stmt = connection.createStatement();
+            String sql = "SELECT path FROM songs";  // Consulta SQL para obtener las rutas de las canciones
+            ResultSet rs = stmt.executeQuery(sql);
+
+            while (rs.next()) {
+                songPathsList.add(rs.getString("path"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        // Convertimos la lista de rutas a un arreglo de String
+        return songPathsList.toArray(new String[0]);
     }
 
     @Override
@@ -200,6 +220,7 @@ public class Spotify extends JFrame implements ActionListener {
         return button;
     }
 
+    DefaultListModel<String> playListListModel = new DefaultListModel<>();
     private void initializeSidebar() {
         // Crear la barra lateral
         sidebar = new JPanel();
@@ -207,18 +228,17 @@ public class Spotify extends JFrame implements ActionListener {
         sidebar.setPreferredSize(new Dimension(200, this.getHeight()));
         sidebar.setBackground(Color.DARK_GRAY);
 
-        // Crear el modelo de la lista de reproducción
-        songListModel = new DefaultListModel<>();
-        songList = new JList<>(songListModel);
-        songList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        songList.setBackground(Color.LIGHT_GRAY);
-        songList.setForeground(Color.BLACK);
+        // Crear el JList para las listas de reproducción
+        JList<String> playListList = new JList<>(playListListModel);  // Usa el modelo de lista
+        playListList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        playListList.setBackground(Color.LIGHT_GRAY);
+        playListList.setForeground(Color.BLACK);
 
         // Cargar listas de reproducción desde la base de datos
         loadPlaylistsFromDatabase();
 
         // Agregar la lista a la barra lateral con un título
-        JScrollPane scrollPane = new JScrollPane(songList);
+        JScrollPane scrollPane = new JScrollPane(playListList);  // Aquí usa playListList, no songList
         scrollPane.setBorder(BorderFactory.createTitledBorder("Listas de Reproducción"));
         sidebar.add(scrollPane, BorderLayout.CENTER);
 
@@ -257,15 +277,13 @@ public class Spotify extends JFrame implements ActionListener {
              ResultSet rs = stmt.executeQuery("SELECT name FROM playlists")) {
 
             while (rs.next()) {
-                songListModel.addElement(rs.getString("name"));
+                playListListModel.addElement(rs.getString("name"));
             }
         } catch (SQLException e) {
             JOptionPane.showMessageDialog(this, "Error al cargar las listas: " + e.getMessage(),
                     "Error de Base de Datos", JOptionPane.ERROR_MESSAGE);
         }
     }
-
-
 
     private void initializeThemeButton() {
         // Crear un panel para el botón
@@ -289,14 +307,14 @@ public class Spotify extends JFrame implements ActionListener {
     }
 
     private void initializeMainContent() {
+
         // Crear el panel principal
-        mainContent = new JPanel(); // Verifica que mainContent no sea null
+        mainContent = new JPanel();
         mainContent.setLayout(new BorderLayout());
         mainContent.setBackground(Color.GRAY);
 
         // Etiqueta para mostrar la canción actual
-        JLabel currentSongLabel = new JLabel("No hay canción seleccionada.");
-        currentSongLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        JLabel currentSongLabel = new JLabel("Selecciona una canción", SwingConstants.CENTER);
         currentSongLabel.setFont(new Font("Arial", Font.BOLD, 16));
         currentSongLabel.setForeground(Color.WHITE);
 
@@ -306,18 +324,59 @@ public class Spotify extends JFrame implements ActionListener {
         playerControls.setBackground(Color.DARK_GRAY);
 
         // Botones de reproducción
-        JButton playButton = createButton("▶️", e -> playSelectedSong(currentSongLabel));
-        JButton pauseButton = createButton("⏸", e -> audioPlayer.stop());
-        JButton nextButton = createButton("⏭️", e -> nextSong(currentSongLabel));
-        JButton previousButton = createButton("⏮️", e -> previousSong(currentSongLabel));
+        playButton = createButton("▶️", e -> playSelectedSong(currentSongLabel));
+        pauseButton = createButton("⏸", e -> audioPlayer.stop());
+        nextButton = createButton("⏭️", e -> nextSong(currentSongLabel));
+        previousButton = createButton("⏮️", e -> previousSong(currentSongLabel));
 
+        // Agregar botones al panel de controles
         playerControls.add(previousButton);
         playerControls.add(playButton);
         playerControls.add(pauseButton);
         playerControls.add(nextButton);
 
+        // Inicializa y llena el modelo de lista con las canciones
+        songListModel = new DefaultListModel<>();
+        for (String songPath : songPathsList) {
+            songListModel.addElement(new File(songPath).getName());
+        }
+
+// Asegúrate de que las canciones están siendo agregadas correctamente
+        System.out.println("Canciones en la lista:");
+        for (int i = 0; i < songListModel.size(); i++) {
+            System.out.println(songListModel.getElementAt(i));
+        }
+
+        songList = new JList<>(songListModel);
+        songList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION); // Selección única
+        songList.setBackground(Color.LIGHT_GRAY);
+        songList.setForeground(Color.BLACK);
+
+
+        // Asegúrate de que solo se actualice cuando se selecciona una canción
+        songList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                songIndex = songList.getSelectedIndex(); // Actualiza el índice de la canción
+                System.out.println("Índice de la canción seleccionado: " + songIndex);
+
+                // Solo reproducir la canción si el índice es válido
+                if (songIndex >= 0) {
+                    playSelectedSong(currentSongLabel);  // Reproducir la canción
+                } else {
+                    System.out.println("Por favor, selecciona una canción.");
+                    currentSongLabel.setText("Por favor, selecciona una canción.");
+                }
+            }
+        });
+
+        // Crear JScrollPane para el JList
+        JScrollPane songListScrollPane = new JScrollPane(songList);
+        songListScrollPane.setBorder(BorderFactory.createTitledBorder("Lista de Canciones"));
+
+
         // Agregar componentes al panel principal
-        mainContent.add(currentSongLabel, BorderLayout.CENTER);
+        mainContent.add(songListScrollPane, BorderLayout.CENTER);
+        mainContent.add(currentSongLabel, BorderLayout.NORTH);
         mainContent.add(playerControls, BorderLayout.SOUTH);
 
         // Verifica que el panel no sea null antes de agregarlo al JFrame
@@ -326,6 +385,22 @@ public class Spotify extends JFrame implements ActionListener {
         } else {
             System.out.println("Error: mainContent es null");
         }
+    }
+
+
+
+    // Función para generar el texto con los nombres de las canciones
+    private String getSongListText() {
+        StringBuilder songListText = new StringBuilder("<html>");
+
+        // Recorrer el array songPaths y agregar solo los nombres de los archivos
+        for (String songPath : songPathsList) {
+            String songName = songPath.substring(songPath.lastIndexOf("\\") + 1); // Obtener el nombre del archivo
+            songListText.append(songName).append("<br>");
+        }
+
+        songListText.append("</html>");
+        return songListText.toString();
     }
 
 
@@ -489,4 +564,5 @@ public class Spotify extends JFrame implements ActionListener {
         // Llamada para inicializar la ventana de Spotify
         new Spotify("example");
     }
+
 }
