@@ -1,22 +1,33 @@
 package spotify;
 
 import com.formdev.flatlaf.FlatDarkLaf;
+import javazoom.jl.decoder.Bitstream;
+import javazoom.jl.decoder.Header;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
+import java.io.FileInputStream;
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.Hashtable;
 
 public class Spotify extends JFrame implements ActionListener {
 
     JLabel label;
     private int index;
 
+    //    Timer
+    private Timer songTimer;
+    private int elapsedTime = 0;
+    private JLabel timeLabel;
+    private JLabel totalDurationLabel;
+
     // Para el control de volumen
     private AudioPlayer audioPlayer = new AudioPlayer();
+    private JSlider progressSlider;
 
     //    JMenu
     private JMenuBar menuBar;
@@ -62,14 +73,65 @@ public class Spotify extends JFrame implements ActionListener {
     // Índices separados para playlist y canciones
     private int songIndex = -1;       // Índice para la canción seleccionada
 
+
     private void playSelectedSong(JLabel currentSongLabel) {
         if (songIndex >= 0 && songIndex < songPathsList.length) {
-            String selectedSongPath = songPathsList[songIndex];  // Usar el índice correcto de la canción
+            String selectedSongPath = songPathsList[songIndex];
             currentSongLabel.setText("Reproduciendo: " + new File(selectedSongPath).getName());
-            System.out.println("Reproduciendo: " + selectedSongPath);  // Depuración
-            audioPlayer.play(selectedSongPath);  // Método para reproducir la canción
+
+            // Calcular y mostrar la duración total
+            String duration = getSongDuration(selectedSongPath);
+            totalDurationLabel.setText("Duración total: " + duration);
+
+            // Configurar el rango del JSlider según la duración
+            int totalSeconds = getTotalSecondsFromDuration(duration);
+            progressSlider.setMaximum(totalSeconds);
+            progressSlider.setValue(0);
+            progressSlider.setEnabled(true);
+
+            // Configurar las etiquetas del JSlider
+            Hashtable<Integer, JLabel> labelTable = new Hashtable<>();
+            labelTable.put(0, new JLabel("00:00")); // Inicio del JSlider
+            labelTable.put(totalSeconds, new JLabel(duration)); // Final del JSlider
+            progressSlider.setLabelTable(labelTable);
+            progressSlider.setPaintLabels(true); // Habilitar las etiquetas
+            progressSlider.repaint();
+
+            // Reiniciar el tiempo y actualizar la etiqueta
+            elapsedTime = 0;
+            updateTimerLabel();
+
+            // Detén el temporizador anterior si existe
+            stopTimer();
+
+            // Configura el nuevo Timer para actualizar cada segundo
+            songTimer = new Timer(1000, e -> {
+                elapsedTime++;
+                progressSlider.setValue(elapsedTime); // Actualizar el JSlider
+                updateTimerLabel();
+
+                // Actualizar la etiqueta del inicio del JSlider
+                if (labelTable != null) {
+                    JLabel startLabel = labelTable.get(0);
+                    if (startLabel != null) {
+                        int minutes = elapsedTime / 60;
+                        int seconds = elapsedTime % 60;
+                        startLabel.setText(String.format("%02d:%02d", minutes, seconds));
+                        progressSlider.setLabelTable(labelTable); // Refrescar la tabla de etiquetas
+                    }
+                }
+
+                if (elapsedTime >= totalSeconds) {
+                    stopTimer();
+                    progressSlider.setValue(0);
+                    JOptionPane.showMessageDialog(this, "La canción ha terminado.");
+                }
+            });
+            songTimer.start();
+
+            // Reproduce la canción
+            audioPlayer.play(selectedSongPath);
         } else {
-            System.out.println("Por favor, selecciona una canción.");
             currentSongLabel.setText("Por favor, selecciona una canción.");
         }
     }
@@ -93,7 +155,6 @@ public class Spotify extends JFrame implements ActionListener {
             JOptionPane.showMessageDialog(this, "No hay canciones anteriores.", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
-
 
     private Connection connectToDatabase() throws SQLException {
         String url = "jdbc:postgresql://localhost:5432/Spotify"; // Cambia esto según tu configuración
@@ -134,21 +195,21 @@ public class Spotify extends JFrame implements ActionListener {
             }
         }
 
-        if (e.getSource() == itemOpen) {
-            // Simular abrir una lista de reproducción
-            String[] playlists = {"Lista 1", "Lista 2", "Lista 3"};
-            String selectedPlaylist = (String) JOptionPane.showInputDialog(
-                    this,
-                    "Selecciona una lista de reproducción:",
-                    "Abrir lista de reproducción",
-                    JOptionPane.QUESTION_MESSAGE,
-                    null,
-                    playlists,
-                    playlists[0]);
-            if (selectedPlaylist != null) {
-                JOptionPane.showMessageDialog(this, "Abriendo " + selectedPlaylist);
-            }
-        }
+//        if (e.getSource() == itemOpen) {
+//            // Simular abrir una lista de reproducción
+//            String[] playlists = {"Lista 1", "Lista 2", "Lista 3"};
+//            String selectedPlaylist = (String) JOptionPane.showInputDialog(
+//                    this,
+//                    "Selecciona una lista de reproducción:",
+//                    "Abrir lista de reproducción",
+//                    JOptionPane.QUESTION_MESSAGE,
+//                    null,
+//                    playlists,
+//                    playlists[0]);
+//            if (selectedPlaylist != null) {
+//                JOptionPane.showMessageDialog(this, "Abriendo " + selectedPlaylist);
+//            }
+//        }
 
         if (e.getSource() == itemLogout) {
             // Limpiar la variable estática (terminar sesión)
@@ -305,18 +366,56 @@ public class Spotify extends JFrame implements ActionListener {
         // Agregar el panel al marco
         this.add(topPanel, BorderLayout.NORTH);
     }
+    private int getTotalSecondsFromDuration(String duration) {
+        try {
+            String[] parts = duration.split(":");
+            int minutes = Integer.parseInt(parts[0]);
+            int seconds = Integer.parseInt(parts[1]);
+            return (minutes * 60) + seconds;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
 
     private void initializeMainContent() {
-
         // Crear el panel principal
         mainContent = new JPanel();
         mainContent.setLayout(new BorderLayout());
         mainContent.setBackground(Color.GRAY);
 
+        progressSlider = new JSlider();
+        progressSlider.setMinimum(0);
+        progressSlider.setValue(0); // Valor inicial
+        progressSlider.setPaintTicks(true);
+        progressSlider.setPaintLabels(true); // Habilitar etiquetas
+        progressSlider.setEnabled(false); // Se habilitará cuando se reproduzca una canción
+
+        progressSlider.addChangeListener(e -> {
+            if (!progressSlider.getValueIsAdjusting()) {
+                int newTime = progressSlider.getValue();
+                if (newTime != elapsedTime) {
+                    elapsedTime = newTime;
+                    updateTimerLabel();
+
+                    // Cambiar la posición de reproducción en el audio
+                    audioPlayer.seekTo(newTime); // Necesitarás implementar esta función en tu clase AudioPlayer
+                }
+            }
+        });
+
+
         // Etiqueta para mostrar la canción actual
         JLabel currentSongLabel = new JLabel("Selecciona una canción", SwingConstants.CENTER);
         currentSongLabel.setFont(new Font("Arial", Font.BOLD, 16));
         currentSongLabel.setForeground(Color.WHITE);
+
+        timeLabel = new JLabel("Tiempo transcurrido: 00:00", SwingConstants.CENTER);
+        timeLabel.setFont(new Font("Arial", Font.PLAIN, 14));
+        timeLabel.setForeground(Color.WHITE);
+
+        totalDurationLabel = new JLabel("Duración total: 00:00", SwingConstants.CENTER);
+        totalDurationLabel.setFont(new Font("Arial", Font.PLAIN, 14));
+        totalDurationLabel.setForeground(Color.WHITE);
 
         // Panel de controles de reproducción
         JPanel playerControls = new JPanel();
@@ -325,7 +424,7 @@ public class Spotify extends JFrame implements ActionListener {
 
         // Botones de reproducción
         playButton = createButton("▶️", e -> playSelectedSong(currentSongLabel));
-        pauseButton = createButton("⏸", e -> audioPlayer.stop());
+        pauseButton = createButton("⏸", e -> pauseSong());
         nextButton = createButton("⏭️", e -> nextSong(currentSongLabel));
         previousButton = createButton("⏮️", e -> previousSong(currentSongLabel));
 
@@ -335,35 +434,33 @@ public class Spotify extends JFrame implements ActionListener {
         playerControls.add(pauseButton);
         playerControls.add(nextButton);
 
+        // Crear un panel que combine los controles y el tiempo
+        JPanel southPanel = new JPanel();
+        southPanel.setLayout(new BorderLayout());
+        southPanel.add(timeLabel, BorderLayout.NORTH);
+        southPanel.add(totalDurationLabel, BorderLayout.CENTER);
+        southPanel.add(progressSlider, BorderLayout.CENTER);
+
+        southPanel.add(playerControls, BorderLayout.SOUTH);
+
         // Inicializa y llena el modelo de lista con las canciones
         songListModel = new DefaultListModel<>();
         for (String songPath : songPathsList) {
             songListModel.addElement(new File(songPath).getName());
         }
 
-// Asegúrate de que las canciones están siendo agregadas correctamente
-        System.out.println("Canciones en la lista:");
-        for (int i = 0; i < songListModel.size(); i++) {
-            System.out.println(songListModel.getElementAt(i));
-        }
-
         songList = new JList<>(songListModel);
-        songList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION); // Selección única
+        songList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         songList.setBackground(Color.LIGHT_GRAY);
         songList.setForeground(Color.BLACK);
 
-
-        // Asegúrate de que solo se actualice cuando se selecciona una canción
+        // Selección de canciones
         songList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                songIndex = songList.getSelectedIndex(); // Actualiza el índice de la canción
-                System.out.println("Índice de la canción seleccionado: " + songIndex);
-
-                // Solo reproducir la canción si el índice es válido
+                songIndex = songList.getSelectedIndex();
                 if (songIndex >= 0) {
-                    playSelectedSong(currentSongLabel);  // Reproducir la canción
+                    playSelectedSong(currentSongLabel);
                 } else {
-                    System.out.println("Por favor, selecciona una canción.");
                     currentSongLabel.setText("Por favor, selecciona una canción.");
                 }
             }
@@ -373,21 +470,13 @@ public class Spotify extends JFrame implements ActionListener {
         JScrollPane songListScrollPane = new JScrollPane(songList);
         songListScrollPane.setBorder(BorderFactory.createTitledBorder("Lista de Canciones"));
 
-
         // Agregar componentes al panel principal
         mainContent.add(songListScrollPane, BorderLayout.CENTER);
         mainContent.add(currentSongLabel, BorderLayout.NORTH);
-        mainContent.add(playerControls, BorderLayout.SOUTH);
+        mainContent.add(southPanel, BorderLayout.SOUTH);
 
-        // Verifica que el panel no sea null antes de agregarlo al JFrame
-        if (mainContent != null) {
-            this.add(mainContent, BorderLayout.CENTER);
-        } else {
-            System.out.println("Error: mainContent es null");
-        }
+        this.add(mainContent, BorderLayout.CENTER);
     }
-
-
 
     // Función para generar el texto con los nombres de las canciones
     private String getSongListText() {
@@ -402,7 +491,6 @@ public class Spotify extends JFrame implements ActionListener {
         songListText.append("</html>");
         return songListText.toString();
     }
-
 
     private void initializeMenu() {
         // Crear el JMenuBar
@@ -467,21 +555,6 @@ public class Spotify extends JFrame implements ActionListener {
         this.setJMenuBar(menuBar); // Mostrar el menú en la ventana
     }
 
-    //
-//    private void showPlayer() {
-//        mainContent.removeAll(); // Eliminar contenido anterior
-//
-//        JLabel playerLabel = new JLabel("Aquí va el reproductor");
-//        playerLabel.setHorizontalAlignment(SwingConstants.CENTER);
-//        playerLabel.setFont(new Font("Arial", Font.BOLD, 16));
-//        playerLabel.setForeground(Color.WHITE);
-//
-//        mainContent.add(playerLabel, BorderLayout.CENTER);
-//        mainContent.revalidate();
-//        mainContent.repaint();
-//    }
-//
-
     private void addPlaylist(String playlistName) {
         if (!playlistName.trim().isEmpty()) {
             try (Connection conn = connectToDatabase()) {
@@ -524,41 +597,62 @@ public class Spotify extends JFrame implements ActionListener {
     }
 
 
-    private void playSong() {
-        String selectedSong = songList.getSelectedValue();
-        if (selectedSong != null) {
-            JOptionPane.showMessageDialog(this, "Reproduciendo: " + selectedSong);
-            // Aquí podrías integrar JLayer o JavaFX Media para reproducir la canción
-        } else {
-            JOptionPane.showMessageDialog(this, "Selecciona una canción primero.");
+//    private void playSong() {
+//        String selectedSong = songList.getSelectedValue();
+//        if (selectedSong != null) {
+//            JOptionPane.showMessageDialog(this, "Reproduciendo: " + selectedSong);
+//            // Aquí podrías integrar JLayer o JavaFX Media para reproducir la canción
+//        } else {
+//            JOptionPane.showMessageDialog(this, "Selecciona una canción primero.");
+//        }
+//    }
+
+//    Methods for songs
+
+    private String getSongDuration(String songPath) {
+        try {
+            File songFile = new File(songPath);
+            FileInputStream fis = new FileInputStream(songFile);
+            Bitstream bitstream = new Bitstream(fis);
+            Header header = bitstream.readFrame();
+
+            // Calcular duración (en segundos)
+            long fileSize = songFile.length();
+            int bitRate = header.bitrate();
+            int durationInSeconds = (int) ((fileSize * 8) / bitRate);
+
+            // Convertir a minutos:segundos
+            int minutes = durationInSeconds / 60;
+            int seconds = durationInSeconds % 60;
+            return String.format("%02d:%02d", minutes, seconds);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "00:00"; // Duración desconocida
         }
     }
+
 
     private void pauseSong() {
-        JOptionPane.showMessageDialog(this, "Pausa");
-        // Implementa la lógica de pausa con JLayer o JavaFX Media
-    }
-
-    private void nextSong() {
-        int index = songList.getSelectedIndex();
-        if (index < songListModel.size() - 1) {
-            songList.setSelectedIndex(index + 1);
-            playSong();
-        } else {
-            JOptionPane.showMessageDialog(this, "No hay más canciones.");
+        if (songTimer != null && songTimer.isRunning()) {
+            songTimer.stop();
+            audioPlayer.stop();
         }
     }
 
-    private void previousSong() {
-        int index = songList.getSelectedIndex();
-        if (index > 0) {
-            songList.setSelectedIndex(index - 1);
-            playSong();
-        } else {
-            JOptionPane.showMessageDialog(this, "No hay canciones anteriores.");
+    private void stopTimer() {
+        if (songTimer != null) {
+            songTimer.stop();
         }
+        elapsedTime = 0;
+        updateTimerLabel();
     }
 
+    private void updateTimerLabel() {
+        int minutes = elapsedTime / 60;
+        int seconds = elapsedTime % 60;
+        timeLabel.setText(String.format("Tiempo transcurrido: %02d:%02d", minutes, seconds));
+    }
 
     public static void main(String[] args) {
         // Llamada para inicializar la ventana de Spotify

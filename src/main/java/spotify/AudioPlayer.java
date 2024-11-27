@@ -48,4 +48,39 @@ public class AudioPlayer {
         }
     }
 
+    public void seekTo(int seconds) {
+        if (currentSongPath == null) {
+            System.out.println("No hay canción cargada para realizar seek.");
+            return;
+        }
+
+        try {
+            stop(); // Detener cualquier reproducción en curso
+            FileInputStream fis = new FileInputStream(currentSongPath);
+            player = new Player(fis);
+
+            // Calcular la cantidad de bytes a saltar basándonos en la duración y el bitrate
+            int bitrate = 128; // Suponiendo un bitrate promedio de 128 kbps (puedes ajustar esto según tu archivo)
+            int bytesPerSecond = (bitrate * 1000) / 8; // Bytes por segundo
+
+            long skipBytes = seconds * bytesPerSecond; // Calcular los bytes que deben saltarse
+            fis.skip(skipBytes);
+
+            isPlaying = true;
+
+            // Reanuda la reproducción desde el punto deseado
+            new Thread(() -> {
+                try {
+                    player.play();
+                } catch (JavaLayerException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+
 }
