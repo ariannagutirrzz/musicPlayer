@@ -115,30 +115,36 @@ public class Frame extends JFrame implements ActionListener {
             username = usernameField.getText();
             String password = new String(passwordField.getPassword());
 
-            // Intentar la conexión y la consulta en un bloque try-catch
-            try (Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5432/Spotify", "postgres", "password");
-                 Statement stmt = conn.createStatement()) {
-
-                // Verificar si el username ya existe
-                String checkSql = String.format("SELECT COUNT(*) FROM userData WHERE USERNAME = '%s'", username);
-                ResultSet rs = stmt.executeQuery(checkSql);
-
-                if (rs.next() && rs.getInt(1) > 0) {
-                    // Si el username ya existe
-                    JOptionPane.showMessageDialog(this, "El nombre de usuario ya está en uso.", "Error", JOptionPane.ERROR_MESSAGE);
-                } else {
-                    // Si el username no existe, proceder a insertarlo
-                    String sql = String.format("INSERT INTO userData(USERNAME, PASSWORD) VALUES ('%s', '%s')", username, password);
-                    stmt.executeUpdate(sql);
-                    JOptionPane.showMessageDialog(this, "Usuario registrado exitosamente!");
-                    usernameField.setText("");
-                    passwordField.setText("");
-                }
-
-            } catch (SQLException ex) {
-                // Manejar la excepción
-                JOptionPane.showMessageDialog(this, "Error al registrar usuario: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            if (username.equals("") || password.equals("")) {
+                JOptionPane.showMessageDialog(null, "Rellena los campos para registrarte");
             }
+            else{
+                // Intentar la conexión y la consulta en un bloque try-catch
+                try (Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5432/Spotify", "postgres", "password");
+                     Statement stmt = conn.createStatement()) {
+
+                    // Verificar si el username ya existe
+                    String checkSql = String.format("SELECT COUNT(*) FROM userData WHERE USERNAME = '%s'", username);
+                    ResultSet rs = stmt.executeQuery(checkSql);
+
+                    if (rs.next() && rs.getInt(1) > 0) {
+                        // Si el username ya existe
+                        JOptionPane.showMessageDialog(this, "El nombre de usuario ya está en uso.", "Error", JOptionPane.ERROR_MESSAGE);
+                    } else {
+                        // Si el username no existe, proceder a insertarlo
+                        String sql = String.format("INSERT INTO userData(USERNAME, PASSWORD) VALUES ('%s', '%s')", username, password);
+                        stmt.executeUpdate(sql);
+                        JOptionPane.showMessageDialog(this, "Usuario registrado exitosamente!");
+                        usernameField.setText("");
+                        passwordField.setText("");
+                    }
+
+                } catch (SQLException ex) {
+                    // Manejar la excepción
+                    JOptionPane.showMessageDialog(this, "Error al registrar usuario: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+                
         }
 
         if (e.getSource() == loginButton) {
