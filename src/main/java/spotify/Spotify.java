@@ -1,6 +1,5 @@
 package spotify;
 
-import com.formdev.flatlaf.FlatDarkLaf;
 import javazoom.jl.decoder.Bitstream;
 import javazoom.jl.decoder.Header;
 
@@ -35,13 +34,11 @@ public class Spotify extends JFrame implements ActionListener {
     private JMenu menuFile, menuView, menuSettings, menuHelp;
     private JMenuItem itemOpen, itemLogout, itemExit, itemToggleSidebar, itemChangeTheme, itemPreferences, itemAccountSettings, itemConnectDevice, itemAbout, itemSupport;
 
-    //    Variables to change the theme
-    private boolean isDarkTheme = true;
     private JButton themeToggleButton;
 
     //    Lateral bar
     private JPanel sidebar;
-    private JList<String> songList;
+    private JList<String> songList, playListList;
     private DefaultListModel<String> songListModel;
     private JButton playButton, pauseButton, nextButton, previousButton;
 
@@ -196,22 +193,6 @@ public class Spotify extends JFrame implements ActionListener {
             }
         }
 
-//        if (e.getSource() == itemOpen) {
-//            // Simular abrir una lista de reproducción
-//            String[] playlists = {"Lista 1", "Lista 2", "Lista 3"};
-//            String selectedPlaylist = (String) JOptionPane.showInputDialog(
-//                    this,
-//                    "Selecciona una lista de reproducción:",
-//                    "Abrir lista de reproducción",
-//                    JOptionPane.QUESTION_MESSAGE,
-//                    null,
-//                    playlists,
-//                    playlists[0]);
-//            if (selectedPlaylist != null) {
-//                JOptionPane.showMessageDialog(this, "Abriendo " + selectedPlaylist);
-//            }
-//        }
-
         if (e.getSource() == itemLogout) {
             // Limpiar la variable estática (terminar sesión)
             Frame.loggedInUsername = null;
@@ -266,17 +247,6 @@ public class Spotify extends JFrame implements ActionListener {
         }
     }
 
-//    THIS FUNCTION IS FOR CHANGE THE THEME WITH AN ICON
-
-    private void updateThemeIcon() {
-        String iconPath = isDarkTheme ? "/images/moon.png" : "/images/sun.png";
-
-        try {
-            themeToggleButton.setIcon(new ImageIcon(getClass().getResource(iconPath))); // Cargar ícono desde recursos
-        } catch (Exception e) {
-            themeToggleButton.setText(isDarkTheme ? "🌙" : "☀️"); // Alternativa textual
-        }
-    }
 
     private JButton createButton(String text, ActionListener listener) {
         JButton button = new JButton(text);
@@ -293,7 +263,7 @@ public class Spotify extends JFrame implements ActionListener {
         sidebar.setBackground(Color.DARK_GRAY);
 
         // Crear el JList para las listas de reproducción
-        JList<String> playListList = new JList<>(playListListModel);  // Usa el modelo de lista
+        playListList = new JList<>(playListListModel);  // Usa el modelo de lista
         playListList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         playListList.setBackground(Color.LIGHT_GRAY);
         playListList.setForeground(Color.BLACK);
@@ -446,8 +416,7 @@ public class Spotify extends JFrame implements ActionListener {
                 }
             }
         });
-
-
+        
         // Etiqueta para mostrar la canción actual
         JLabel currentSongLabel = new JLabel("Selecciona una canción", SwingConstants.CENTER);
         currentSongLabel.setFont(new Font("Arial", Font.BOLD, 16));
@@ -522,20 +491,6 @@ public class Spotify extends JFrame implements ActionListener {
         this.add(mainContent, BorderLayout.CENTER);
     }
 
-    // Función para generar el texto con los nombres de las canciones
-    private String getSongListText() {
-        StringBuilder songListText = new StringBuilder("<html>");
-
-        // Recorrer el array songPaths y agregar solo los nombres de los archivos
-        for (String songPath : songPathsList) {
-            String songName = songPath.substring(songPath.lastIndexOf("\\") + 1); // Obtener el nombre del archivo
-            songListText.append(songName).append("<br>");
-        }
-
-        songListText.append("</html>");
-        return songListText.toString();
-    }
-
     private void initializeMenu() {
         // Crear el JMenuBar
         menuBar = new JMenuBar();
@@ -608,7 +563,7 @@ public class Spotify extends JFrame implements ActionListener {
                 pstmt.executeUpdate();
 
                 // Añadir al modelo de la lista
-                songListModel.addElement(playlistName);
+                playListListModel.addElement(playlistName);
 
                 JOptionPane.showMessageDialog(this, "Lista de reproducción '" + playlistName + "' añadida.");
             } catch (SQLException e) {
@@ -620,7 +575,7 @@ public class Spotify extends JFrame implements ActionListener {
     }
 
     private void deleteSelectedPlaylist() {
-        String selectedPlaylist = songList.getSelectedValue();
+        String selectedPlaylist = playListList.getSelectedValue();
         if (selectedPlaylist != null) {
             try (Connection conn = connectToDatabase()) {
                 String query = "DELETE FROM playlists WHERE name = ?";
@@ -629,7 +584,7 @@ public class Spotify extends JFrame implements ActionListener {
                 pstmt.executeUpdate();
 
                 // Eliminar del modelo
-                songListModel.removeElement(selectedPlaylist);
+                playListListModel.removeElement(selectedPlaylist);
 
                 JOptionPane.showMessageDialog(this, "Lista de reproducción '" + selectedPlaylist + "' eliminada.");
             } catch (SQLException e) {
@@ -639,19 +594,6 @@ public class Spotify extends JFrame implements ActionListener {
             JOptionPane.showMessageDialog(this, "Selecciona una lista para eliminar.", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
-
-
-//    private void playSong() {
-//        String selectedSong = songList.getSelectedValue();
-//        if (selectedSong != null) {
-//            JOptionPane.showMessageDialog(this, "Reproduciendo: " + selectedSong);
-//            // Aquí podrías integrar JLayer o JavaFX Media para reproducir la canción
-//        } else {
-//            JOptionPane.showMessageDialog(this, "Selecciona una canción primero.");
-//        }
-//    }
-
-//    Methods for songs
 
     private String getSongDuration(String songPath) {
         try {
