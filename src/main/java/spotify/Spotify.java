@@ -715,8 +715,8 @@ public class Spotify extends JFrame implements ActionListener {
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setCurrentDirectory(new File(System.getProperty("user.home"))); // Directorio inicial
 
-        // Filtro para solo mostrar archivos de audio (opcional)
-        fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivos de audio", "mp3", "wav", "flac"));
+        // Filtro para solo mostrar archivos de audio mp3
+        fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivos de audio MP3", "mp3"));
 
         // Mostrar el cuadro de diálogo
         int result = fileChooser.showOpenDialog(this);
@@ -726,6 +726,12 @@ public class Spotify extends JFrame implements ActionListener {
             File selectedFile = fileChooser.getSelectedFile();
             String filePath = selectedFile.getAbsolutePath();
             String fileName = selectedFile.getName();
+
+            // Verificamos que el archivo tiene la extensión .mp3
+            if (!fileName.toLowerCase().endsWith(".mp3")) {
+                JOptionPane.showMessageDialog(this, "Por favor, selecciona un archivo MP3.", "Formato no válido", JOptionPane.WARNING_MESSAGE);
+                return; // No hace nada si el archivo no es un MP3
+            }
 
             // URL de conexión para PostgreSQL
             String url = "jdbc:postgresql://localhost:5432/Spotify";  // Cambia 'localhost' y 'Spotify' por tus datos
@@ -800,6 +806,7 @@ public class Spotify extends JFrame implements ActionListener {
             System.out.println("Canción seleccionada: " + fileName + " con ruta: " + filePath);
         }
     }
+
 
 
     public static void main(String[] args) {
